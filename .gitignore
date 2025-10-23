@@ -1,1 +1,8 @@
 node_modules
+.env
+src/database/database.db
+tmp/uploads/*
+!tmp/uploads/.gitkeep
+logs/*
+!logs/.gitkeep
+*.log
