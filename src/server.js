@@ -8,7 +8,23 @@ const uploadConfig = require("./configs/upload");
 const cookieParser = require("cookie-parser");
 const logger = require("./configs/logger");
 
+// Security middlewares
+const { generalLimiter } = require("./middlewares/rateLimit");
+const {
+  helmetConfig,
+  helmetConfigDev,
+  sanitizeInput,
+  sqlInjectionProtection,
+} = require("./middlewares/security");
+
 const app = express();
+
+// Security: Helmet
+const isDevelopment = process.env.NODE_ENV === "development";
+app.use(isDevelopment ? helmetConfigDev : helmetConfig);
+
+// Security: Rate limiting global
+app.use(generalLimiter);
 
 // CORS Configuration
 const corsOptions = {
@@ -18,7 +34,11 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.use(cookieParser());
-app.use(express.json());
+app.use(express.json({ limit: "10mb" })); // Limite de payload
+
+// Security: Sanitização e proteção SQL Injection
+app.use(sanitizeInput);
+app.use(sqlInjectionProtection);
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -26,8 +46,10 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(routes);
+// Static files MUST come before routes to avoid conflicts
 app.use("/files", express.static(uploadConfig.UPLOADS_FOLDER));
+
+app.use(routes);
 
 // Error handling middleware
 app.use((error, request, response, next) => {

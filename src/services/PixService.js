@@ -1,5 +1,5 @@
-const { Pix } = require("pix-utils");
-const QRCode = require("qrcode");
+const { createStaticPix, hasError } = require("pix-utils");
+const logger = require("../configs/logger");
 
 class PixService {
   /**
@@ -24,29 +24,32 @@ class PixService {
     description = "Pedido Sushihana",
   }) {
     try {
-      // Criar payload PIX
-      const pix = new Pix({
-        merchantName,
-        merchantCity,
-        key: pixKey,
-        keyType: pixKeyType || "cnpj",
-        transactionId,
-        message: description,
+      // Truncar campos para respeitar limites do padrão PIX
+      const truncatedMerchantName = merchantName.substring(0, 25);
+      const truncatedMerchantCity = merchantCity.substring(0, 15);
+      const truncatedDescription = description.substring(0, 72);
+      const truncatedTxid = transactionId.substring(0, 25);
+
+      // Criar payload PIX usando pix-utils
+      const pix = createStaticPix({
+        merchantName: truncatedMerchantName,
+        merchantCity: truncatedMerchantCity,
+        pixKey,
+        infoAdicional: truncatedDescription,
+        transactionAmount: parseFloat(amount),
+        txid: truncatedTxid,
       });
 
-      // Definir valor
-      pix.setAmount(parseFloat(amount).toFixed(2));
+      // Verificar se houve erro
+      if (hasError(pix)) {
+        throw new Error(`Erro ao criar payload PIX: ${pix.message || 'Dados inválidos'}`);
+      }
 
-      // Gerar código copia e cola (EMV)
-      const pixCopyPaste = pix.getPayload();
+      // Gerar código copia e cola (BRCode)
+      const pixCopyPaste = pix.toBRCode();
 
       // Gerar QR Code em base64
-      const qrCodeBase64 = await QRCode.toDataURL(pixCopyPaste, {
-        errorCorrectionLevel: "H",
-        type: "image/png",
-        width: 300,
-        margin: 2,
-      });
+      const qrCodeBase64 = await pix.toImage();
 
       return {
         pixCopyPaste,
@@ -66,24 +69,45 @@ class PixService {
    * @returns {Promise<{pixCopyPaste: string, qrCodeBase64: string}>}
    */
   async generateOrderPix({ amount, orderId, description }) {
-    const merchantName = process.env.PIX_MERCHANT_NAME || "Sushihana";
-    const merchantCity = process.env.PIX_MERCHANT_CITY || "Sao Paulo";
-    const pixKey = process.env.PIX_KEY;
-    const pixKeyType = process.env.PIX_KEY_TYPE || "cnpj";
+    try {
+      // Validar inputs
+      if (!amount || amount <= 0) {
+        throw new Error("Valor inválido para geração de PIX");
+      }
 
-    if (!pixKey) {
-      throw new Error("Chave PIX não configurada no servidor!");
+      if (!orderId) {
+        throw new Error("ID do pedido é obrigatório");
+      }
+
+      const merchantName = process.env.PIX_MERCHANT_NAME || "Sushihana";
+      const merchantCity = process.env.PIX_MERCHANT_CITY || "Sao Paulo";
+      const pixKey = process.env.PIX_KEY;
+      const pixKeyType = process.env.PIX_KEY_TYPE || "cnpj";
+
+      if (!pixKey) {
+        logger.error("Chave PIX não configurada no servidor!");
+        throw new Error("Chave PIX não configurada no servidor!");
+      }
+
+      logger.info(`Gerando PIX para pedido ${orderId}, valor: R$ ${amount}`);
+
+      const pixData = await this.generatePixPayment({
+        merchantName,
+        merchantCity,
+        pixKey,
+        pixKeyType,
+        amount,
+        transactionId: orderId,
+        description: description || `Pedido #${orderId}`,
+      });
+
+      logger.info(`PIX gerado com sucesso para pedido ${orderId}`);
+
+      return pixData;
+    } catch (error) {
+      logger.error(`Erro ao gerar PIX para pedido ${orderId}: ${error.message}`);
+      throw error;
     }
-
-    return this.generatePixPayment({
-      merchantName,
-      merchantCity,
-      pixKey,
-      pixKeyType,
-      amount,
-      transactionId: orderId,
-      description: description || `Pedido #${orderId}`,
-    });
   }
 
   /**
@@ -117,6 +141,29 @@ class PixService {
     const expirationDate = new Date();
     expirationDate.setMinutes(expirationDate.getMinutes() + minutes);
     return expirationDate;
+  }
+
+  /**
+   * Verificar se um PIX expirou
+   * @param {Date|string} expirationDate - Data de expiração
+   * @returns {boolean}
+   */
+  isPixExpired(expirationDate) {
+    if (!expirationDate) return false;
+
+    const now = new Date();
+    const expiration = new Date(expirationDate);
+
+    return now > expiration;
+  }
+
+  /**
+   * Formatar valor para PIX (2 casas decimais)
+   * @param {number} value - Valor a formatar
+   * @returns {number}
+   */
+  formatPixValue(value) {
+    return parseFloat(parseFloat(value).toFixed(2));
   }
 }
 
