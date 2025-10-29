@@ -19,20 +19,27 @@ const {
 
 const app = express();
 
+// CORS Configuration (MUST be before other middlewares)
+const corsOptions = {
+  origin: process.env.FRONTEND_URL || "http://localhost:5173",
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
+  exposedHeaders: ['Set-Cookie'],
+  optionsSuccessStatus: 200,
+};
+
+app.use(cors(corsOptions));
+
+// Handle preflight requests explicitly
+app.options('*', cors(corsOptions));
+
 // Security: Helmet
 const isDevelopment = process.env.NODE_ENV === "development";
 app.use(isDevelopment ? helmetConfigDev : helmetConfig);
 
 // Security: Rate limiting global
 app.use(generalLimiter);
-
-// CORS Configuration
-const corsOptions = {
-  origin: process.env.FRONTEND_URL || true,
-  credentials: true,
-};
-
-app.use(cors(corsOptions));
 app.use(cookieParser());
 app.use(express.json({ limit: "10mb" })); // Limite de payload
 
@@ -47,6 +54,14 @@ app.use((req, res, next) => {
 });
 
 // Static files MUST come before routes to avoid conflicts
+// Add CORS headers for static files
+app.use("/files", (req, res, next) => {
+  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+  res.setHeader("Cross-Origin-Embedder-Policy", "unsafe-none");
+  res.setHeader("Access-Control-Allow-Origin", process.env.FRONTEND_URL || "*");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  next();
+});
 app.use("/files", express.static(uploadConfig.UPLOADS_FOLDER));
 
 app.use(routes);

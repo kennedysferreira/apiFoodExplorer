@@ -1,8 +1,8 @@
 const helmet = require("helmet");
 
 /**
- * Configuração do Helmet para segurança HTTP
- * Helmet ajuda a proteger a aplicação definindo vários headers HTTP
+ * Configuraï¿½ï¿½o do Helmet para seguranï¿½a HTTP
+ * Helmet ajuda a proteger a aplicaï¿½ï¿½o definindo vï¿½rios headers HTTP
  */
 const helmetConfig = helmet({
   // Content Security Policy
@@ -11,14 +11,14 @@ const helmetConfig = helmet({
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https:"],
+      imgSrc: ["'self'", "data:", "https:", "http:"],
     },
   },
 
   // Remove o header X-Powered-By
   hidePoweredBy: true,
 
-  // Força HTTPS (desabilitar em desenvolvimento)
+  // Forï¿½a HTTPS (desabilitar em desenvolvimento)
   hsts: {
     maxAge: 31536000, // 1 ano
     includeSubDomains: true,
@@ -33,21 +33,27 @@ const helmetConfig = helmet({
   // Previne MIME type sniffing
   noSniff: true,
 
-  // Adiciona proteção XSS
+  // Adiciona proteï¿½ï¿½o XSS
   xssFilter: true,
+
+  // Permite recursos cross-origin (para imagens)
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  crossOriginEmbedderPolicy: false,
 });
 
 /**
- * Configuração do Helmet para desenvolvimento
+ * Configuraï¿½ï¿½o do Helmet para desenvolvimento
  * Menos restritivo para facilitar testes
  */
 const helmetConfigDev = helmet({
   contentSecurityPolicy: false,
   hsts: false,
+  crossOriginResourcePolicy: false,
+  crossOriginEmbedderPolicy: false,
 });
 
 /**
- * Middleware de sanitização de inputs
+ * Middleware de sanitizaï¿½ï¿½o de inputs
  * Remove caracteres perigosos de strings
  */
 const sanitizeInput = (req, res, next) => {
@@ -80,8 +86,8 @@ const sanitizeInput = (req, res, next) => {
 };
 
 /**
- * Middleware para prevenir SQL Injection básico
- * Detecta padrões suspeitos em inputs
+ * Middleware para prevenir SQL Injection bï¿½sico
+ * Detecta padrï¿½es suspeitos em inputs
  */
 const sqlInjectionProtection = (req, res, next) => {
   const sqlPatterns = [
@@ -103,7 +109,7 @@ const sqlInjectionProtection = (req, res, next) => {
       if (checkValue(req.body[key])) {
         return res.status(400).json({
           status: "error",
-          message: "Input inválido detectado",
+          message: "Input invï¿½lido detectado",
         });
       }
     }
@@ -115,7 +121,7 @@ const sqlInjectionProtection = (req, res, next) => {
       if (checkValue(req.query[key])) {
         return res.status(400).json({
           status: "error",
-          message: "Input inválido detectado",
+          message: "Input invï¿½lido detectado",
         });
       }
     }

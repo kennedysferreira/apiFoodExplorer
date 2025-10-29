@@ -15,6 +15,9 @@ ordersRoutes.post("/", orderLimiter, ordersController.create);
 ordersRoutes.get("/", ordersController.index);
 ordersRoutes.get("/payment-status/:status", ordersController.byPaymentStatus);
 ordersRoutes.get("/:id", ordersController.show);
+
+// Atualizar status do pedido (rota específica deve vir antes da genérica)
+ordersRoutes.patch("/:id/status", ordersController.update);
 ordersRoutes.patch("/:id", ordersController.update);
 
 // Confirmar pagamento com rate limiter

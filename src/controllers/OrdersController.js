@@ -152,6 +152,14 @@ class OrdersController {
         throw new AppError("Método de pagamento inválido!");
       }
 
+      // Formatar delivery_address se vier como objeto
+      let formattedAddress = delivery_address;
+      if (delivery_address && typeof delivery_address === 'object') {
+        formattedAddress = `${delivery_address.street}, ${delivery_address.number}` +
+          (delivery_address.complement ? ` - ${delivery_address.complement}` : '') +
+          `\n${delivery_address.neighborhood}, ${delivery_address.city}/${delivery_address.state}`;
+      }
+
       // Preparar dados do pedido
       const orderData = {
         user_id,
@@ -161,7 +169,7 @@ class OrdersController {
         discount,
         total,
         delivery_type,
-        delivery_address,
+        delivery_address: formattedAddress,
         delivery_phone,
         delivery_notes,
         estimated_time,
@@ -193,12 +201,16 @@ class OrdersController {
       // Inserir pedido
       const [order_id] = await knex("orders").insert(orderData);
 
+      logger.info(`Order created successfully - ID: ${order_id}, Number: ${order_number}, User: ${user_id}`);
+
       // Inserir itens do pedido
       const orderItemsWithOrderId = orderItems.map((item) => ({
         ...item,
         order_id,
       }));
       await knex("order_items").insert(orderItemsWithOrderId);
+
+      logger.info(`Order items inserted - Order ID: ${order_id}, Items count: ${orderItemsWithOrderId.length}`);
 
       // Atualizar cupom se foi usado
       if (validCoupon) {
@@ -320,10 +332,26 @@ class OrdersController {
         .orderBy("created_at", "desc");
     }
 
-    // Buscar itens de cada pedido
+    // Buscar itens de cada pedido com dados completos dos pratos
     for (const order of orders) {
       const items = await knex("order_items").where({ order_id: order.id });
-      order.items = items;
+
+      // Enriquecer itens com dados completos dos pratos
+      const enrichedItems = await Promise.all(
+        items.map(async (item) => {
+          const plate = await knex("plates")
+            .select("id", "name", "image", "description", "category")
+            .where({ id: item.plate_id })
+            .first();
+
+          return {
+            ...item,
+            plate: plate || { name: item.plate_name },
+          };
+        })
+      );
+
+      order.items = enrichedItems;
     }
 
     return response.json(orders);
@@ -335,20 +363,41 @@ class OrdersController {
     const user_id = request.user.id;
     const { role } = request.user;
 
+    logger.info(`Fetching order - ID: ${id}, User: ${user_id}, Role: ${role}`);
+
     const order = await knex("orders").where({ id }).first();
 
     if (!order) {
+      logger.warn(`Order not found - ID: ${id}`);
       throw new AppError("Pedido não encontrado!");
     }
+
+    logger.info(`Order found - ID: ${id}, Number: ${order.order_number}`);
 
     // Verificar permissão
     if (role !== "admin" && order.user_id !== user_id) {
       throw new AppError("Você não tem permissão para ver este pedido!", 403);
     }
 
-    // Buscar itens do pedido
+    // Buscar itens do pedido com informações completas dos pratos
     const items = await knex("order_items").where({ order_id: id });
-    order.items = items;
+
+    // Enriquecer itens com dados completos dos pratos
+    const enrichedItems = await Promise.all(
+      items.map(async (item) => {
+        const plate = await knex("plates")
+          .select("id", "name", "image", "description", "category")
+          .where({ id: item.plate_id })
+          .first();
+
+        return {
+          ...item,
+          plate: plate || { name: item.plate_name },
+        };
+      })
+    );
+
+    order.items = enrichedItems;
 
     // Buscar informações do usuário
     const user = await knex("users")
